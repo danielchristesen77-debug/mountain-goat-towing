@@ -1,0 +1,596 @@
+// Mountain Goat Towing - Business Website
+// React + Tailwind CSS
+
+import React, { useEffect, useState } from "react";
+
+type ServiceType = "local" | "loaded" | "enroute" | "roadside" | "pullout";
+
+export default function BusinessWebsite() {
+  // ===================== STATE =====================
+  const [loadedMiles, setLoadedMiles] = useState<number>(0); // for loaded charge
+  const [enrouteMiles, setEnrouteMiles] = useState<number>(0); // for enroute charge
+  const [serviceType, setServiceType] = useState<ServiceType>("local");
+  const [discount, setDiscount] = useState<number>(0);
+  const [childLocked, setChildLocked] = useState(false);
+  const [animalHot, setAnimalHot] = useState(false);
+  const [breakdown, setBreakdown] = useState<string[]>([]);
+  const [total, setTotal] = useState<number>(0);
+  const [pulloutMinutes, setPulloutMinutes] = useState<number>(0);
+  const [afterHours, setAfterHours] = useState(false);
+
+  // ===================== DARK MODE =====================
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia) {
+      const prefersDark = window
+        .matchMedia("(prefers-color-scheme: dark)")
+        .matches;
+      if (prefersDark) document.documentElement.classList.add("dark");
+    }
+  }, []);
+
+  // ===================== AFTER HOURS AUTO-DETECT (8PM–7AM) =====================
+  useEffect(() => {
+    const hour = new Date().getHours();
+    if (hour >= 20 || hour < 7) setAfterHours(true);
+  }, []);
+
+  // Simple test cases (for reasoning about the calculator logic):
+  // - Loaded: 5 mi   -> $0.00  (<= 10 free miles)
+  // - Loaded: 20 mi  -> (20-10)*4.25 = $42.50
+  // - Enroute: 10 mi -> $0.00  (<= 15 free miles)
+  // - Enroute: 25 mi -> (25-15)*3.5 = $35.00
+  // - Roadside only:  serviceType="roadside", no miles -> $60.00
+  // - Local after-hours: serviceType="local", afterHours=true -> $150 + $80 = $230
+  // - Local + loaded 30mi + enroute 40mi, no discount, no after hours:
+  //     Loaded: (30-10)*4.25 = $85.00
+  //     Enroute: (40-15)*3.5 = $87.50
+  //     Local base: $150
+  //     Total: 150 + 85 + 87.5 = $322.50
+
+  // ===================== PRICE CALCULATOR =====================
+  const handleCalculate = () => {
+    let base = 0;
+    const lines: string[] = [];
+
+    // FREE EMERGENCY EXCEPTIONS
+    if (childLocked || animalHot) {
+      setTotal(0);
+      setBreakdown(["Emergency Free Service Applied"]);
+      return;
+    }
+
+    // BASE BY SERVICE TYPE
+    if (serviceType === "local") {
+      base += 150;
+      lines.push("Local Tow: $150.00");
+    }
+
+    if (serviceType === "roadside") {
+      base += 60;
+      lines.push("Roadside Service Base: $60.00");
+    }
+
+    if (serviceType === "pullout") {
+      const extraHours = Math.max(0, pulloutMinutes - 30) / 60; // first 30 minutes included
+      const pullCharge = extraHours * 75;
+      base += pullCharge;
+      if (pullCharge > 0) {
+        lines.push(`Pullout Extra Time Charge: $${pullCharge.toFixed(2)}`);
+      } else {
+        lines.push("Pullout / Winching: within included 30 minutes (no extra charge)");
+      }
+    }
+
+    // ALWAYS ADD LOADED + ENROUTE COSTS (IN ADDITION TO BASE)
+    const loadedCharge = loadedMiles <= 10 ? 0 : (loadedMiles - 10) * 4.25;
+    const enrouteCharge = enrouteMiles <= 15 ? 0 : (enrouteMiles - 15) * 3.5;
+
+    if (loadedCharge > 0) {
+      lines.push(`Loaded Miles Charge: $${loadedCharge.toFixed(2)}`);
+    } else if (loadedMiles > 0) {
+      lines.push("Loaded Miles: within first 10 free miles (no charge)");
+    }
+
+    if (enrouteCharge > 0) {
+      lines.push(`Enroute Miles Charge: $${enrouteCharge.toFixed(2)}`);
+    } else if (enrouteMiles > 0) {
+      lines.push("Enroute Miles: within first 15 free miles (no charge)");
+    }
+
+    base += loadedCharge + enrouteCharge;
+
+    // AFTER HOURS FEE (ONLY LOCAL & ROADSIDE)
+    if (afterHours && (serviceType === "local" || serviceType === "roadside")) {
+      base += 80;
+      lines.push("After Hours Fee: $80.00");
+    }
+
+    // SEASONAL DISCOUNT
+    if (discount > 0) {
+      const amount = base * (discount / 100);
+      base -= amount;
+      lines.push(`Seasonal Discount (${discount}%): -$${amount.toFixed(2)}`);
+    }
+
+    setTotal(Number.isFinite(base) ? base : 0);
+    setBreakdown(lines);
+  };
+
+  // ===================== RENDER =====================
+  return (
+    <>
+      {/* MOBILE STICKY BAR */}
+      <div className="fixed bottom-0 left-0 right-0 bg-yellow-500 text-black flex justify-around items-center py-3 text-xl font-extrabold shadow-2xl z-50 md:hidden">
+        <a
+          href="tel:9862168489"
+          className="flex-1 text-center border-r-2 border-black"
+        >
+          📞 CALL NOW
+        </a>
+        <a href="sms:9862168489" className="flex-1 text-center">
+          💬 TEXT NOW
+        </a>
+      </div>
+
+      <div
+        id="top"
+        className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100"
+      >
+        {/* DARK MODE BUTTON */}
+        <button
+          onClick={() => document.documentElement.classList.toggle("dark")}
+          className="fixed bottom-6 right-6 bg-yellow-500 text-black px-4 py-2 rounded-xl shadow-lg hover:bg-yellow-600 z-40"
+        >
+          Dark Mode
+        </button>
+
+        {/* AFTER HOURS BANNER */}
+        {afterHours && (
+          <div className="bg-purple-700 text-white text-center py-2 text-lg font-bold shadow-md animate-pulse">
+            🌙 After-Hours Active (8 PM – 7 AM): +$80 (Local &amp; Roadside)
+          </div>
+        )}
+
+        {/* EMERGENCY BANNER */}
+        <div className="bg-red-600 text-white text-center py-3 text-xl font-bold animate-pulse">
+          🚨 24/7 EMERGENCY TOWING — CALL
+          <a href="tel:9862168489" className="underline ml-2">
+            (986) 216-8489
+          </a>
+        </div>
+
+        {/* HEADER */}
+        <header className="bg-black p-6 flex flex-col md:flex-row md:justify-between md:items-center gap-4 border-b-4 border-yellow-500">
+          <div className="flex items-center space-x-4">
+            <img
+              src="/mnt/data/pickles no 2words.png"
+              alt="Mountain Goat Towing Logo"
+              className="h-16 w-auto"
+            />
+            <div>
+              <h1 className="text-3xl text-white font-bold">Mountain Goat Towing</h1>
+              <p className="text-sm text-gray-300">
+                Idaho-wide Towing &amp; Roadside Assistance
+              </p>
+            </div>
+          </div>
+
+          <nav className="space-x-4 text-white text-sm md:text-lg">
+            <a href="#services">Services</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#rates">Rates</a>
+            <a href="#service-area">Service Area</a>
+            <a href="#contact">Contact</a>
+          </nav>
+        </header>
+
+        {/* HERO */}
+        <section className="p-10 md:p-20 text-center bg-black text-white">
+          <h2 className="text-5xl font-extrabold mb-4">
+            Idaho&apos;s Most Reliable Towing Service
+          </h2>
+          <p className="text-xl mb-6 max-w-2xl mx-auto">
+            Fast 24/7 towing, roadside help, and recovery statewide.
+          </p>
+          <div className="flex flex-col md:flex-row justify-center gap-4">
+            <a
+              href="tel:9862168489"
+              className="bg-yellow-500 text-black px-8 py-3 rounded-2xl text-2xl font-bold shadow-xl"
+            >
+              📞 CALL NOW
+            </a>
+            <a
+              href="#request"
+              className="bg-white/20 text-white px-8 py-3 rounded-2xl text-xl font-semibold"
+            >
+              Request a Tow Online
+            </a>
+          </div>
+        </section>
+
+        {/* SERVICES */}
+        <section
+          id="services"
+          className="p-10 md:p-20 bg-gray-100 dark:bg-gray-900"
+        >
+          <h3 className="text-5xl font-extrabold text-center mb-12 dark:text-yellow-400">
+            Our Services
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 max-w-6xl mx-auto">
+            {[
+              {
+                title: "Towing",
+                desc: "Light, medium, and motorcycle towing statewide.",
+              },
+              {
+                title: "Roadside Assistance",
+                desc: "Lockouts, jumps, fuel delivery, tire changes.",
+              },
+              {
+                title: "Pull Outs",
+                desc: "Snow, mud, and ditch recovery.",
+              },
+              {
+                title: "Accident Recovery",
+                desc: "Full scene recovery and vehicle transport.",
+              },
+              {
+                title: "Emergency Response",
+                desc: "24/7 dispatch for urgent calls.",
+              },
+              {
+                title: "Lockout &amp; Key Assist",
+                desc: "Child-in-car emergencies are always FREE.",
+              },
+            ].map((s) => (
+              <div
+                key={s.title}
+                className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl border-l-8 border-yellow-500"
+              >
+                <h4 className="text-3xl font-bold mb-3">{s.title}</h4>
+                <p className="text-lg">{s.desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* PRICING */}
+        <section id="pricing" className="p-10 md:p-20 bg-white dark:bg-gray-800">
+          <h3 className="text-5xl text-center font-extrabold mb-12 dark:text-yellow-400">
+            Pricing
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 max-w-5xl mx-auto">
+            <div className="p-8 bg-gray-100 dark:bg-gray-700 rounded-2xl shadow-xl">
+              <h4 className="text-3xl font-bold mb-2">Local Tow</h4>
+              <p className="text-4xl font-extrabold mb-2">$150</p>
+            </div>
+
+            <div className="p-8 bg-gray-100 dark:bg-gray-700 rounded-2xl shadow-xl">
+              <h4 className="text-3xl font-bold">Loaded Miles</h4>
+              <p className="text-4xl font-extrabold mb-2">$4.25 / mile</p>
+            </div>
+
+            <div className="p-8 bg-gray-100 dark:bg-gray-700 rounded-2xl shadow-xl">
+              <h4 className="text-3xl font-bold">Enroute Miles</h4>
+              <p className="text-4xl font-extrabold mb-2">$3.50 / mile</p>
+            </div>
+
+            <div className="p-8 bg-gray-100 dark:bg-gray-700 rounded-2xl shadow-xl">
+              <h4 className="text-3xl font-bold">Roadside</h4>
+              <p className="text-4xl font-extrabold mb-2">$60+</p>
+            </div>
+          </div>
+        </section>
+
+        {/* RATES & CHARGES */}
+        <section
+          id="rates"
+          className="p-10 md:p-20 bg-yellow-50 dark:bg-gray-800 text-center"
+        >
+          <h3 className="text-5xl font-extrabold mb-12 dark:text-yellow-300">
+            Rates &amp; Charges
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            <div className="bg-white dark:bg-gray-700 p-8 rounded-2xl shadow-xl text-left">
+              <h4 className="text-2xl font-bold">🚚 Loaded Miles</h4>
+              <p className="text-xl font-extrabold">$4.25 / mile</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300 mt-2">
+                First 10 miles free · charged only for loaded transport beyond
+                that.
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-gray-700 p-8 rounded-2xl shadow-xl text-left">
+              <h4 className="text-2xl font-bold">🛣️ Enroute Miles</h4>
+              <p className="text-xl font-extrabold">$3.50 / mile</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300 mt-2">
+                First 15 miles free · charged for distance we travel to reach
+                you.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* CALCULATOR */}
+        <section
+          id="calculator"
+          className="p-10 md:p-20 bg-yellow-50 dark:bg-gray-700"
+        >
+          <h3 className="text-5xl text-center mb-12 font-extrabold dark:text-yellow-300">
+            Price Calculator
+          </h3>
+
+          <div className="max-w-3xl mx-auto bg-white dark:bg-gray-800 shadow-xl p-8 rounded-2xl space-y-6">
+            {/* SERVICE TYPE */}
+            <div>
+              <label className="font-bold block mb-1" htmlFor="serviceType">
+                Service Type
+              </label>
+              <select
+                id="serviceType"
+                value={serviceType}
+                onChange={(e) => setServiceType(e.target.value as ServiceType)}
+                className="w-full p-3 rounded-xl text-black"
+              >
+                <option value="local">Local Tow ($150)</option>
+                <option value="loaded">Loaded Miles Only</option>
+                <option value="enroute">Enroute Miles Only</option>
+                <option value="roadside">Roadside ($60 minimum)</option>
+                <option value="pullout">
+                  Pullout / Winching (first 30 min included, $75/hr after)
+                </option>
+              </select>
+            </div>
+
+            {/* LOADED MILES INPUT */}
+            <div>
+              <label className="font-bold block mb-1" htmlFor="loadedMiles">
+                Loaded Miles (first 10 free)
+              </label>
+              <input
+                id="loadedMiles"
+                type="number"
+                value={loadedMiles}
+                onChange={(e) =>
+                  setLoadedMiles(parseFloat(e.target.value) || 0)
+                }
+                className="w-full p-3 rounded-xl text-black"
+              />
+            </div>
+
+            {/* ENROUTE MILES INPUT */}
+            <div>
+              <label className="font-bold block mb-1" htmlFor="enrouteMiles">
+                Enroute Miles (first 15 free)
+              </label>
+              <input
+                id="enrouteMiles"
+                type="number"
+                value={enrouteMiles}
+                onChange={(e) =>
+                  setEnrouteMiles(parseFloat(e.target.value) || 0)
+                }
+                className="w-full p-3 rounded-xl text-black"
+              />
+            </div>
+
+            {/* PULLOUT MINUTES INPUT */}
+            {serviceType === "pullout" && (
+              <div>
+                <label
+                  className="font-bold block mb-1"
+                  htmlFor="pulloutMinutes"
+                >
+                  Pullout Minutes (first 30 included)
+                </label>
+                <input
+                  id="pulloutMinutes"
+                  type="number"
+                  value={pulloutMinutes}
+                  onChange={(e) =>
+                    setPulloutMinutes(parseFloat(e.target.value) || 0)
+                  }
+                  className="w-full p-3 rounded-xl text-black"
+                />
+              </div>
+            )}
+
+            {/* CHILD LOCKED FREE */}
+            <div>
+              <label
+                className="font-bold block mb-1"
+                htmlFor="childLocked"
+              >
+                Child Locked in Vehicle (FREE)
+              </label>
+              <input
+                id="childLocked"
+                type="checkbox"
+                checked={childLocked}
+                onChange={(e) => setChildLocked(e.target.checked)}
+                className="w-5 h-5 mr-2"
+              />
+            </div>
+
+            {/* ANIMAL HOT CAR FREE */}
+            <div>
+              <label className="font-bold block mb-1" htmlFor="animalHot">
+                Animal Locked in Hot Car (FREE)
+              </label>
+              <input
+                id="animalHot"
+                type="checkbox"
+                checked={animalHot}
+                onChange={(e) => setAnimalHot(e.target.checked)}
+                className="w-5 h-5 mr-2"
+              />
+            </div>
+
+            {/* AFTER HOURS */}
+            <div>
+              <label
+                className="font-bold block mb-1"
+                htmlFor="afterHours"
+              >
+                After Hours (+$80 for Local &amp; Roadside)
+              </label>
+              <input
+                id="afterHours"
+                type="checkbox"
+                checked={afterHours}
+                onChange={(e) => setAfterHours(e.target.checked)}
+                className="w-5 h-5 mr-2"
+              />
+            </div>
+
+            {/* DISCOUNT */}
+            <div>
+              <label className="font-bold block mb-1" htmlFor="discount">
+                Seasonal Discount
+              </label>
+              <select
+                id="discount"
+                value={discount}
+                onChange={(e) => setDiscount(parseFloat(e.target.value))}
+                className="w-full p-3 rounded-xl text-black"
+              >
+                <option value={0}>None</option>
+                <option value={10}>Winter Special - 10% Off</option>
+                <option value={15}>Holiday Deal - 15% Off</option>
+                <option value={20}>Summer Savings - 20% Off</option>
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCalculate}
+              className="w-full bg-yellow-500 text-black py-3 rounded-xl text-lg font-bold hover:bg-yellow-600"
+            >
+              Calculate Total
+            </button>
+
+            <div className="text-center text-3xl font-extrabold">
+              ${total.toFixed(2)}
+            </div>
+
+            <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-xl text-black dark:text-white text-sm">
+              <h4 className="font-bold text-lg mb-2">Detailed Breakdown:</h4>
+              <ul>
+                {breakdown.map((item, idx) => (
+                  <li key={idx}>• {item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* SERVICE AREA (SIMPLE TEXT) */}
+        <section
+          id="service-area"
+          className="p-10 md:p-20 bg-gray-100 dark:bg-gray-900 text-center"
+        >
+          <h3 className="text-4xl font-extrabold mb-4 dark:text-yellow-400">
+            Service Area
+          </h3>
+          <p className="max-w-3xl mx-auto text-lg">
+            We proudly serve the entire state of Idaho — from Boise, Meridian,
+            and Nampa to Twin Falls, Idaho Falls, Pocatello, and every backroad
+            in between.
+          </p>
+        </section>
+
+        {/* CONTACT SECTION */}
+        <section
+          id="contact"
+          className="p-10 md:p-20 bg-white dark:bg-gray-800"
+        >
+          <h3 className="text-4xl font-extrabold text-center mb-8 dark:text-yellow-400">
+            Contact Us
+          </h3>
+          <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+            <div>
+              <h4 className="text-2xl font-bold mb-2">Call or Text</h4>
+              <a
+                href="tel:9862168489"
+                className="inline-block bg-yellow-500 text-black px-6 py-3 rounded-xl text-lg font-bold mb-4 hover:bg-yellow-600"
+              >
+                📞 (986) 216-8489
+              </a>
+              <p className="text-sm md:text-base text-gray-600 dark:text-gray-300">
+                For fastest service, call us directly. Text is also available
+                for non-emergencies.
+              </p>
+
+              <h4 className="text-2xl font-bold mt-6 mb-2">Email</h4>
+              <p className="text-sm md:text-base">
+                support@mountainGoatTowing.com
+              </p>
+
+              <h4 className="text-2xl font-bold mt-6 mb-2">Base Location</h4>
+              <p className="text-sm md:text-base">
+                Boise, Idaho · Serving all surrounding areas and statewide
+                routes.
+              </p>
+            </div>
+
+            <div>
+              <h4 className="text-2xl font-bold mb-2">Quick Message</h4>
+              <form className="space-y-3 md:space-y-4">
+                <input
+                  className="w-full p-3 rounded-xl text-black"
+                  placeholder="Name"
+                />
+                <input
+                  className="w-full p-3 rounded-xl text-black"
+                  placeholder="Email"
+                />
+                <textarea
+                  className="w-full p-3 rounded-xl text-black h-24"
+                  placeholder="How can we help?"
+                ></textarea>
+                <button className="bg-black dark:bg-yellow-500 text-white dark:text-black px-6 py-3 rounded-xl font-semibold">
+                  Send Message
+                </button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        {/* TERMS & CONDITIONS (SHORT) */}
+        <section
+          id="terms"
+          className="p-10 md:p-16 bg-gray-100 dark:bg-gray-900 text-center"
+        >
+          <h3 className="text-3xl md:text-4xl font-bold mb-4 dark:text-yellow-400">
+            Terms &amp; Conditions
+          </h3>
+          <p className="max-w-3xl mx-auto text-sm md:text-base text-gray-700 dark:text-gray-300">
+            Final pricing may vary based on distance, vehicle type, location,
+            road conditions, and recovery difficulty. By requesting service,
+            you agree to allow our operators to safely tow, recover, or assist
+            your vehicle using industry-standard practices. Child or animal
+            lockout emergencies are always free of service charges.
+          </p>
+        </section>
+
+        {/* FOOTER */}
+        <footer className="p-6 md:p-8 bg-black text-white text-center mt-4">
+          <div className="mb-3 text-sm md:text-base">
+            © {new Date().getFullYear()} Mountain Goat Towing — All Rights
+            Reserved
+          </div>
+          <div className="text-white font-bold mb-2">📞 (986) 216-8489</div>
+          <div className="space-x-4 text-yellow-400 text-sm md:text-base mb-3">
+            <a href="#top">Back to Top</a>
+            <a href="#service-area">Service Area</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#terms">Terms</a>
+          </div>
+        </footer>
+      </div>
+    </>
+  );
+}
